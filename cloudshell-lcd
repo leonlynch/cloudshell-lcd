@@ -2,7 +2,7 @@
 # hardkernel CloudShell Screen update
 #
 # requires the following packages:
-# curl sysstat
+# curl sysstat util-linux
 #
 
 ############## Configuration
@@ -67,39 +67,28 @@ get_net_tx_rx_realtime() {
 	export NET_RX=${net_txrx[1]}
 }
 
-get_disk_mount_info() {
-	SATA=($(sort -k 1 -t " " /proc/mounts | awk '(/^\/dev\/sd/) && (!a[$1]++) { printf "%s ", $1 }'))
-}
-
 get_disk_info() {
-	local t=$(df -h)
 	local iostat=$(iostat -y -m 1 1)
 
-	for i in "${!SATA[@]}"
-	do
-		# escape / --> \/
-		escaped_regex="${SATA[$i]//\//\\/}"
-		#DISK_SIZE[$i]=$(echo "$t" | awk '/^'"$escaped_regex"'/ {print $2}')
-		DISK_USED[$i]=$(echo "$t" | awk '/^'"$escaped_regex"'/ {print $3}')
-		DISK_FREE[$i]=$(echo "$t" | awk '/^'"$escaped_regex"'/ {print $4}')
-		DISK_USED_PCT[$i]=$(echo "$t" | awk '/^'"$escaped_regex"'/ {print $5}')
+	DISK=($(lsblk --list --paths --output NAME,TYPE --noheadings | awk '{ if ($2 == "disk") print $1 }' | grep -v "/dev/mmcblk" | sort -u))
 
-		local SAT=$(expr "${SATA[$i]#"/dev/"}" : '\([a-z]*\)')
-		DISK_R[$i]=$(echo "$iostat" | awk '/^'"$SAT"'/ {print $3}')
-		DISK_W[$i]=$(echo "$iostat" | awk '/^'"$SAT"'/ {print $4}')
+	for i in "${!DISK[@]}"
+	do
+		local DISK_DEV=$(basename $(realpath ${DISK[$i]}))
+		DISK_R[$i]=$(echo "$iostat" | awk '/^'"${DISK_DEV}"'/ {print $3}')
+		DISK_W[$i]=$(echo "$iostat" | awk '/^'"${DISK_DEV}"'/ {print $4}')
 	done
 }
 
 get_disk_temperature() {
-	for i in "${!SATA[@]}"
+	for i in "${!DISK[@]}"
 	do
 		# declare and assign variable seperately to avoid masking return value
 		DISK_TEMP[$i]=" (IDLE)"
 		if (( ${DISK_R[$i]%.*} > 0 )) || (( ${DISK_W[$i]%.*} > 0 ))
 		then
-
 			local t
-			t=$(smartctl -a "${SATA[$i]}" -d sat | grep "Temp")
+			t=$(smartctl -a "${DISK[$i]}" -d sat | grep "Temp")
 			if (( $? == 0 ))
 			then
 				local temp=$(echo $t | awk '{print $10}')
@@ -108,6 +97,23 @@ get_disk_temperature() {
 				DISK_TEMP[$i]=""
 			fi
 		fi
+	done
+}
+
+get_partition_info() {
+	local t=$(df -h)
+
+	PARTITION=($(lsblk --list --paths --output NAME,MOUNTPOINT --noheadings | awk '{ if ($2) print $1 }' | grep -v "/dev/mmcblk" | sort -u))
+
+	for i in "${!PARTITION[@]}"
+	do
+		# escape / --> \/
+		escaped_regex="${PARTITION[$i]//\//\\/}"
+		#PART_SIZE[$i]=$(echo "$t" | awk '/^'"$escaped_regex"'/ {print $2}')
+		PART_USED[$i]=$(echo "$t" | awk '/^'"$escaped_regex"'/ {print $3}')
+		PART_FREE[$i]=$(echo "$t" | awk '/^'"$escaped_regex"'/ {print $4}')
+		PART_USED_PCT[$i]=$(echo "$t" | awk '/^'"$escaped_regex"'/ {print $5}')
+		PART_MOUNT[$i]=$(echo "$t" | awk '/^'"$escaped_regex"'/ {print $6}')
 	done
 }
 
@@ -193,9 +199,9 @@ while true; do
 	get_ethernet_speed
 	get_hostname
 	get_os_distributor
-	get_disk_mount_info
 	get_disk_info
 	get_disk_temperature
+	get_partition_info
 	get_full_date
 	#get_net_tx_rx_realtime
 	#get_memory_info
@@ -224,15 +230,21 @@ while true; do
 	echo -e "IP: $CBLUE$INTERNAL_IP$COFF @ $CBLUE$SPEED_ETH0 Mbps$COFF" > $oc
 	# Line network usage
 	#echo -e "TX: $CBLUE$NET_TX MB/s$COFF RX: $CBLUE$NET_RX MB/s$COFF" > $oc
-	# Line Disk Space
 
-	
-	for i in "${!SATA[@]}"
+	# Line Disk Usage
+	echo "" > $oc
+	for i in "${!DISK[@]}"
+	do
+		echo -e "${DISK[$i]} ${DISK_TEMP[$i]}$COFF" > $oc
+		echo -e "R/W $CBLUE${DISK_R[$i]}$COFF / $CBLUE${DISK_W[$i]}$COFF MB/s" > $oc
+	done
+
+	# Line Partition Usage
+	for i in "${!PARTITION[@]}"
 	do
 		echo "" > $oc
-		echo -e "${SATA[$i]} ${DISK_TEMP[$i]}$COFF" > $oc
-		echo -e "R/W $CBLUE${DISK_R[$i]}$COFF / $CBLUE${DISK_W[$i]}$COFF MB/s" > $oc
-		echo -ne "Disk Used: $CBLUE${DISK_USED[$i]}$COFF ($CBLUE${DISK_USED_PCT[$i]}$COFF)  Free: $CBLUE${DISK_FREE[$i]}$COFF" > $oc
+		echo -e "${PARTITION[$i]} @ ${PART_MOUNT[$i]}$COFF" > $oc
+		echo -ne "Used: $CBLUE${PART_USED[$i]}$COFF ($CBLUE${PART_USED_PCT[$i]}$COFF)  Free: $CBLUE${PART_FREE[$i]}$COFF" > $oc
 	done
 
 	# Line Samba
