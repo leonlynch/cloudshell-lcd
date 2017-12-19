@@ -123,7 +123,7 @@ get_system_info() {
 	export KERNEL_VERSION=$(uname -r | awk -F "-" '{print $1}')
 }
 
-get_cpu_usage() { 
+get_cpu_usage() {
 	export CPU_USAGE=$(mpstat 1 1 | awk '/Average/ {printf "%.1f", 100-$12}')
 }
 
@@ -152,11 +152,11 @@ get_samba_connections() {
 	fi
 }
 
-get_nfs_connections() { 
+get_nfs_connections() {
 	export NFS_CONNECTIONS=$(netstat -an | grep 2049 | grep -c ESTA)
 }
 
-get_process_count() { 
+get_process_count() {
 	export PROCESS_COUNT=$(ps xa | wc -l)
 }
 
@@ -184,7 +184,7 @@ while true; do
 	#if (( (ext_ip_refresh_c % EXT_IP_REFRESH) == 0 )); then
 	#	get_external_ip
 	#fi
-	
+
 	# increment $ext_ip_refresh_c
 	#ext_ip_refresh_c=$((ext_ip_refresh_c+1))
 
