@@ -67,10 +67,15 @@ get_net_tx_rx_realtime() {
 	export NET_RX=${net_txrx[1]}
 }
 
+get_block_device_info() {
+	local lsblk=$(lsblk --list --paths --output NAME,TYPE,MOUNTPOINT --noheadings | grep -v "/dev/mmcblk")
+
+	DISK=($(echo "$lsblk" | awk '{ if ($2 == "disk") print $1 }' | sort -u))
+	PARTITION=($(echo "$lsblk" | awk '{ if ($3) print $1 }' | sort -u))
+}
+
 get_disk_info() {
 	local iostat=$(iostat -y -m 1 1)
-
-	DISK=($(lsblk --list --paths --output NAME,TYPE --noheadings | awk '{ if ($2 == "disk") print $1 }' | grep -v "/dev/mmcblk" | sort -u))
 
 	for i in "${!DISK[@]}"
 	do
@@ -102,8 +107,6 @@ get_disk_temperature() {
 
 get_partition_info() {
 	local t=$(df -h)
-
-	PARTITION=($(lsblk --list --paths --output NAME,MOUNTPOINT --noheadings | awk '{ if ($2) print $1 }' | grep -v "/dev/mmcblk" | sort -u))
 
 	for i in "${!PARTITION[@]}"
 	do
@@ -199,6 +202,7 @@ while true; do
 	get_ethernet_speed
 	get_hostname
 	get_os_distributor
+	get_block_device_info
 	get_disk_info
 	get_disk_temperature
 	get_partition_info
